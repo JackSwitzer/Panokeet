@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.panokeet.whisper-dictate</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jackswitzer/.local/bin/uv</string>
+        <string>run</string>
+        <string>--project</string>
+        <string>/Users/jackswitzer/Desktop/Panokeet</string>
+        <string>python</string>
+        <string>/Users/jackswitzer/Desktop/Panokeet/app.py</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>WorkingDirectory</key>
+    <string>/Users/jackswitzer/Desktop/Panokeet</string>
+    <key>StandardOutPath</key>
+    <string>/tmp/whisper-dictate.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/whisper-dictate.err</string>
+</dict>
+</plist>
