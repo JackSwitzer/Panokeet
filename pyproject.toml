@@ -1,0 +1,19 @@
+[project]
+name = "whisper-dictate"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.124.4",
+    "numpy>=2.3.5",
+    "py2app>=0.28.9",
+    "pynput>=1.8.1",
+    "pyobjc-framework-cocoa>=12.1",
+    "pyobjc-framework-quartz>=12.1",
+    "pyperclip>=1.11.0",
+    "rich>=14.2.0",
+    "rumps>=0.4.0",
+    "sounddevice>=0.5.3",
+    "uvicorn>=0.38.0",
+]

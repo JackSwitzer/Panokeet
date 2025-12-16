@@ -1,0 +1,30 @@
+name: PanokeetUI
+options:
+  bundleIdPrefix: com.panokeet
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  PanokeetUI:
+    type: application
+    platform: macOS
+    sources:
+      - PanokeetUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.panokeet.ui
+        INFOPLIST_FILE: PanokeetUI/Info.plist
+        CODE_SIGN_ENTITLEMENTS: PanokeetUI/PanokeetUI.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        ENABLE_HARDENED_RUNTIME: NO
+        SWIFT_VERSION: "5.9"
+    entitlements:
+      path: PanokeetUI/PanokeetUI.entitlements
