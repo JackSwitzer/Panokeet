@@ -4,44 +4,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Whisper Dictation - Local speech-to-text tool using whisper.cpp on macOS Apple Silicon.
+Panokeet - Local voice-to-text dictation for macOS. SwiftUI menu bar app + Python backend using whisper.cpp.
+
+## Architecture
+
+```
+PanokeetUI (SwiftUI)          backend/server.py (FastAPI)
+├── Menu bar app              ├── /status - recording state
+├── FloatingPanel popups      ├── /toggle - start/stop recording
+├── Polls backend @ 150ms     ├── /level - audio levels
+└── State: recording →        ├── /pending - get transcript
+    transcribing →            └── /save, /cancel
+    showingTranscript
+```
 
 ## Tech Stack
 
-- Python 3.13 with uv for package management
-- whisper.cpp via Homebrew for transcription (Metal/GPU accelerated)
-- Whisper large-v3 model (~3GB in models/)
+- **Frontend**: SwiftUI, AppKit (NSPanel for floating windows)
+- **Backend**: Python 3.13, FastAPI, uvicorn
+- **Transcription**: whisper.cpp via Homebrew (Metal GPU accelerated)
+- **Package Manager**: uv
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `PanokeetUI/PanokeetUI/PanokeetUIApp.swift` | Main app, AppState, PopupView |
+| `PanokeetUI/PanokeetUI/FloatingPanel.swift` | NSPanel subclass for floating windows |
+| `PanokeetUI/PanokeetUI/APIClient.swift` | HTTP client for backend |
+| `backend/server.py` | FastAPI server, audio recording, whisper integration |
+| `start.sh` | Launch script for both backend and UI |
 
 ## Commands
 
 ```bash
-# Run the dictation tool
-uv run python dictate.py
+# Run everything
+./start.sh
 
-# Add dependencies
-uv add <package>
+# Build UI only
+cd PanokeetUI && xcodebuild -scheme PanokeetUI -configuration Release build
+
+# Run backend only
+uv run python backend/server.py
 ```
 
-## Architecture
+## State Machine
 
-- `dictate.py` - Main script with hotkey listener, audio recording, and whisper.cpp integration
-- `models/ggml-large-v3.bin` - Whisper model file (not in git)
-- `training_data/` - Saved audio+text pairs for future fine-tuning (not in git)
-
-## Key Bindings
-
-- **Cmd+1** - Toggle recording on/off (auto-saves when stopped)
-- **Cmd+2 (hold)** - Hold to speak (auto-saves on release)
-- **Esc** - Quit
-
-## Training Data Format
-
-Auto-saved on each recording:
-- `training_data/audio_000001.wav` - 16kHz mono audio
-- `training_data/audio_000001.txt` - Transcription text
+```
+.ready → .recording → .transcribing → .showingTranscript → .ready
+           │                              │
+           └──── (cancel) ────────────────┘
+```
 
 ## Important Notes
 
-- Requires Accessibility permissions for global hotkey listening
-- whisper.cpp uses Metal for GPU acceleration on Apple Silicon
-- Audio recorded at 16kHz mono (Whisper's expected format)
+- PopupView is a unified view that switches content based on AppState.status
+- All content views (Recording, Transcribing, Transcript) are same size (500x200)
+- Panel stays open through all states, only closes on save/cancel
+- Global hotkey: Cmd+Keypad7 → F13 (via Karabiner) → backend toggle

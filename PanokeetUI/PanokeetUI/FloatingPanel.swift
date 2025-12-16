@@ -51,6 +51,11 @@ class FloatingPanel: NSPanel {
         return true
     }
 
+    override func makeKeyAndOrderFront(_ sender: Any?) {
+        super.makeKeyAndOrderFront(sender)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     // Center on screen with slight upward offset
     override func center() {
         guard let screen = NSScreen.main else {

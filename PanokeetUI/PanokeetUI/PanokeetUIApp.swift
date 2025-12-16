@@ -33,14 +33,14 @@ class AppState: ObservableObject {
     var backendFailCount = 0
 
     enum Status {
-        case ready, recording, transcribing, error
+        case ready, recording, transcribing, showingTranscript, error
     }
 
     var statusIcon: String {
         switch status {
         case .ready: return "mic.fill"
         case .recording: return "record.circle.fill"
-        case .transcribing: return "ellipsis.circle.fill"
+        case .transcribing, .showingTranscript: return "ellipsis.circle.fill"
         case .error: return "exclamationmark.triangle.fill"
         }
     }
@@ -54,6 +54,7 @@ class AppState: ObservableObject {
         case .ready: return "Ready"
         case .recording: return "Recording..."
         case .transcribing: return "Transcribing..."
+        case .showingTranscript: return "Review Transcript"
         case .error: return "Error"
         }
     }
@@ -85,12 +86,10 @@ class AppState: ObservableObject {
                         NSSound(named: "Morse")?.play()
                         showRecordingPopup()
                     } else if !statusResp.recording && wasRecording {
-                        // Just stopped recording - show transcribing
+                        // Just stopped recording - SwiftUI will update automatically
                         status = .transcribing
                         NSSound(named: "Tink")?.play()
                         stopLevelPolling()
-                        // Force UI update by notifying change
-                        objectWillChange.send()
                     }
                 }
 
@@ -104,7 +103,8 @@ class AppState: ObservableObject {
                             currentTranscript = transcript
                             currentDuration = duration
                             NSSound(named: "Glass")?.play()
-                            updatePopupWithTranscript()
+                            // SwiftUI will update automatically when status changes
+                            status = .showingTranscript
                         }
                     }
                 }
@@ -116,7 +116,7 @@ class AppState: ObservableObject {
                         if status != .ready {
                             status = .error
                             errorMessage = "Backend disconnected"
-                            closePopupWithError()
+                            closePopup()
                         }
                     }
                 }
@@ -134,22 +134,32 @@ class AppState: ObservableObject {
 
         let panel = FloatingPanel()
 
-        let view = RecordingView(
+        let view = PopupView(
             appState: self,
+            onSave: { [weak self] finalText in
+                guard let self = self else { return }
+                self.save(original: self.currentTranscript, final: finalText, duration: self.currentDuration)
+                self.closePopup()
+            },
             onCancel: { [weak self] in
                 self?.cancelRecording()
-                panel.close()
-                self?.popupWindow = nil
-                self?.stopLevelPolling()
-                self?.refocusPreviousApp()
+                self?.closePopup()
             }
         )
 
         panel.contentView = NSHostingView(rootView: view)
-        panel.setContentSize(NSSize(width: 400, height: 150))
+        panel.setContentSize(NSSize(width: 520, height: 220))
         panel.center()
         panel.makeKeyAndOrderFront(nil)
         popupWindow = panel
+    }
+
+    func closePopup() {
+        stopLevelPolling()
+        popupWindow?.close()
+        popupWindow = nil
+        status = .ready
+        refocusPreviousApp()
     }
 
     func startLevelPolling() {
@@ -179,81 +189,6 @@ class AppState: ObservableObject {
                 // Silently ignore level fetch errors - non-critical
             }
         }
-    }
-
-    func updatePopupWithTranscript() {
-        guard let panel = popupWindow as? FloatingPanel else {
-            showTranscriptPopup()
-            return
-        }
-
-        let transcript = currentTranscript
-        let duration = currentDuration
-
-        let view = TranscriptView(
-            text: transcript,
-            duration: duration,
-            onSave: { [weak self] finalText in
-                self?.save(original: transcript, final: finalText, duration: duration)
-                panel.close()
-                self?.popupWindow = nil
-                self?.refocusPreviousApp()
-            },
-            onCancel: { [weak self] in
-                self?.cancel()
-                panel.close()
-                self?.popupWindow = nil
-                self?.refocusPreviousApp()
-            }
-        )
-
-        panel.contentView = NSHostingView(rootView: view)
-        panel.setContentSize(NSSize(width: 520, height: 220))
-        status = .ready
-    }
-
-    func showTranscriptPopup() {
-        if previousApp == nil {
-            previousApp = NSWorkspace.shared.frontmostApplication
-        }
-
-        NSApp.activate(ignoringOtherApps: true)
-
-        let panel = FloatingPanel()
-        let transcript = currentTranscript
-        let duration = currentDuration
-
-        let view = TranscriptView(
-            text: transcript,
-            duration: duration,
-            onSave: { [weak self] finalText in
-                self?.save(original: transcript, final: finalText, duration: duration)
-                panel.close()
-                self?.popupWindow = nil
-                self?.refocusPreviousApp()
-            },
-            onCancel: { [weak self] in
-                self?.cancel()
-                panel.close()
-                self?.popupWindow = nil
-                self?.refocusPreviousApp()
-            }
-        )
-
-        panel.contentView = NSHostingView(rootView: view)
-        panel.setContentSize(NSSize(width: 520, height: 220))
-        panel.center()
-        panel.makeKeyAndOrderFront(nil)
-        popupWindow = panel
-        status = .ready
-    }
-
-    func closePopupWithError() {
-        stopLevelPolling()
-        popupWindow?.close()
-        popupWindow = nil
-        status = .ready
-        refocusPreviousApp()
     }
 
     func refocusPreviousApp() {
@@ -320,68 +255,288 @@ class AppState: ObservableObject {
     }
 }
 
-// MARK: - Recording View
+// MARK: - Unified Popup View
 
-struct RecordingView: View {
+struct PopupView: View {
     @ObservedObject var appState: AppState
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        Group {
+            switch appState.status {
+            case .recording:
+                RecordingContent(levels: appState.levelHistory, onCancel: onCancel)
+            case .transcribing:
+                TranscribingContent(onCancel: onCancel)
+            case .showingTranscript:
+                TranscriptContent(
+                    text: appState.currentTranscript,
+                    duration: appState.currentDuration,
+                    onSave: onSave,
+                    onCancel: onCancel
+                )
+            default:
+                EmptyView()
+            }
+        }
+    }
+}
+
+// MARK: - Recording Content
+
+struct RecordingContent: View {
+    let levels: [Double]
     let onCancel: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
-            if appState.status == .recording {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 10, height: 10)
-                        .pulsingAnimation()
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 10, height: 10)
+                    .pulsingAnimation()
 
-                    Text("Recording")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 16)
-
-                WaveformView(levels: appState.levelHistory)
-                    .frame(height: 60)
-                    .padding(.horizontal, 20)
-
-            } else if appState.status == .transcribing {
-                Spacer()
-
-                HStack(spacing: 12) {
-                    ProgressView()
-                        .scaleEffect(0.8)
-
-                    Text("Transcribing...")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-            } else {
-                Spacer()
-                Text("Waiting...")
-                    .foregroundStyle(.tertiary)
-                Spacer()
+                Text("Recording")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
+            .padding(.top, 16)
+
+            WaveformView(levels: levels)
+                .frame(height: 60)
+                .padding(.horizontal, 20)
 
             Text("Esc to cancel")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .padding(.bottom, 12)
         }
-        .frame(width: 380, height: 130)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(.white.opacity(0.1), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+        .frame(width: 500, height: 200)
+        .background(Color(NSColor.windowBackgroundColor))
         .onKeyPress(.escape) {
             onCancel()
             return .handled
         }
+    }
+}
+
+// MARK: - Transcribing Content
+
+struct TranscribingContent: View {
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Spacer()
+
+            HStack(spacing: 12) {
+                ProgressView()
+                    .scaleEffect(0.8)
+
+                Text("Transcribing...")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text("Esc to cancel")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .padding(.bottom, 12)
+        }
+        .frame(width: 500, height: 200)
+        .background(Color(NSColor.windowBackgroundColor))
+        .onKeyPress(.escape) {
+            onCancel()
+            return .handled
+        }
+    }
+}
+
+// MARK: - Transcript Content
+
+struct TranscriptContent: View {
+    @State var text: String
+    let duration: Double
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+
+    init(text: String, duration: Double, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self._text = State(initialValue: text)
+        self.duration = duration
+        self.onSave = onSave
+        self.onCancel = onCancel
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Panokeet")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 11))
+                    Text(String(format: "%.1fs", duration))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                }
+                .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            // Text Editor
+            TranscriptTextEditorInline(
+                text: $text,
+                onSubmit: { onSave(text) },
+                onCancel: onCancel
+            )
+            .frame(minHeight: 100)
+            .padding(.horizontal, 16)
+
+            // Footer
+            HStack {
+                Text("Enter = Save & Copy")
+                    .foregroundStyle(.tertiary)
+
+                Text("•")
+                    .foregroundStyle(.quaternary)
+
+                Text("Esc = Cancel")
+                    .foregroundStyle(.tertiary)
+
+                Spacer()
+
+                Button("Cancel") {
+                    onCancel()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.black.opacity(0.1))
+                )
+
+                Button("Save") {
+                    onSave(text)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.orange)
+                )
+            }
+            .font(.system(size: 12))
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+        }
+        .frame(width: 500, height: 200)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+}
+
+// MARK: - Inline Text Editor for Transcript
+
+struct TranscriptTextEditorInline: NSViewRepresentable {
+    @Binding var text: String
+    let onSubmit: () -> Void
+    let onCancel: () -> Void
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        let textView = InlineCustomTextView()
+
+        textView.delegate = context.coordinator
+        textView.isRichText = false
+        textView.font = NSFont.systemFont(ofSize: 15)
+        textView.textColor = NSColor.labelColor
+        textView.backgroundColor = NSColor.black.withAlphaComponent(0.15)
+        textView.insertionPointColor = NSColor.orange
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.allowsUndo = true
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+
+        textView.onSubmit = onSubmit
+        textView.onCancel = onCancel
+
+        scrollView.documentView = textView
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.containerSize = NSSize(width: scrollView.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+
+        textView.string = text
+        textView.selectAll(nil)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            textView.window?.makeFirstResponder(textView)
+        }
+
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? InlineCustomTextView else { return }
+        if textView.string != text {
+            textView.string = text
+        }
+        textView.onSubmit = onSubmit
+        textView.onCancel = onCancel
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: TranscriptTextEditorInline
+
+        init(_ parent: TranscriptTextEditorInline) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.text = textView.string
+        }
+    }
+}
+
+class InlineCustomTextView: NSTextView {
+    var onSubmit: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 && !event.modifierFlags.contains(.shift) {
+            onSubmit?()
+            return
+        }
+        if event.keyCode == 53 {
+            onCancel?()
+            return
+        }
+        super.keyDown(with: event)
     }
 }
 
