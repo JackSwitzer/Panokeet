@@ -9,8 +9,8 @@ struct PanokeetUIApp: App {
         MenuBarExtra {
             MenuContent(appState: appState)
         } label: {
-            Image(systemName: appState.statusIcon)
-                .symbolRenderingMode(appState.isRecording ? .multicolor : .monochrome)
+            Image(appState.isRecording ? "active" : "idle")
+                .renderingMode(.original)
         }
     }
 }
