@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Panokeet Pixel Editor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #1a1a2e;
+            color: #fff;
+            min-height: 100vh;
+            padding: 15px;
+            touch-action: manipulation;
+        }
+        h1 { text-align: center; font-size: 24px; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 15px; font-size: 14px; }
+
+        .container { max-width: 600px; margin: 0 auto; }
+
+        /* Canvas Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #16213e;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .tab.active { border-color: #4CAF50; background: #1a3a2e; }
+
+        /* Instructions */
+        .instructions {
+            background: #16213e;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .instructions strong { color: #4CAF50; }
+        .instructions .mic { color: #757575; }
+        .instructions .beak { color: #FF5722; }
+
+        /* Color Palette */
+        .palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 15px;
+            padding: 12px;
+            background: #16213e;
+            border-radius: 12px;
+        }
+        .color-btn {
+            width: 40px;
+            height: 40px;
+            border: 3px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .color-btn.selected {
+            border-color: #fff;
+            box-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+        .color-btn.transparent { background: #1a1a2e; border: 2px dashed #444; }
+        .color-label { font-size: 9px; text-align: center; color: #666; }
+
+        /* Grid */
+        .grid-container { display: flex; justify-content: center; margin-bottom: 15px; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(22, 1fr);
+            gap: 1px;
+            background: #333;
+            padding: 2px;
+            border-radius: 8px;
+            touch-action: none;
+        }
+        .pixel {
+            aspect-ratio: 1;
+            background: #1a1a2e;
+            cursor: pointer;
+            min-width: 14px;
+            min-height: 14px;
+        }
+
+        /* Buttons */
+        .buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn-primary { background: #4CAF50; color: #fff; }
+        .btn-secondary { background: #2196F3; color: #fff; }
+        .btn-danger { background: #f44336; color: #fff; }
+        .btn-undo { background: #9C27B0; color: #fff; }
+        .btn-redo { background: #673AB7; color: #fff; }
+        .btn-transform { background: #FF9800; color: #fff; }
+        .btn:active { transform: scale(0.95); }
+
+        /* Preview */
+        .preview-section { text-align: center; margin-bottom: 15px; }
+        .preview-label { color: #888; font-size: 11px; margin-bottom: 5px; }
+        .previews { display: flex; gap: 20px; justify-content: center; align-items: flex-end; }
+        .preview canvas { image-rendering: pixelated; background: #333; border-radius: 4px; }
+
+        /* Output */
+        .output {
+            background: #0d1117;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 10px;
+            max-height: 120px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            user-select: all;
+            -webkit-user-select: all;
+        }
+        .copy-hint { text-align: center; color: #666; font-size: 11px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Panokeet Pixel Editor</h1>
+        <p class="subtitle">22x22 grid - Tap to paint!</p>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchCanvas(0)">IDLE (wings folded)</div>
+            <div class="tab" onclick="switchCanvas(1)">ACTIVE (wings spread)</div>
+        </div>
+
+        <div class="instructions" id="instructions">
+            <strong>IDLE:</strong> Bird perched, wings folded down-left<br>
+            <span class="beak">Beak:</span> Orange pointing right (row 5-6)<br>
+            <span class="mic">Mic:</span> Add gray mic head near beak (cols 13-15)
+        </div>
+
+        <div class="palette" id="palette"></div>
+
+        <div class="grid-container">
+            <div class="grid" id="grid"></div>
+        </div>
+
+        <div class="preview-section">
+            <div class="preview-label">Preview</div>
+            <div class="previews">
+                <div><canvas id="preview44" width="44" height="44"></canvas><div class="preview-label">44px</div></div>
+                <div><canvas id="preview22" width="22" height="22"></canvas><div class="preview-label">22px</div></div>
+            </div>
+        </div>
+
+        <div class="buttons">
+            <button class="btn btn-undo" onclick="undo()">↶</button>
+            <button class="btn btn-redo" onclick="redo()">↷</button>
+            <button class="btn btn-transform" onclick="growShape()">+ Grow</button>
+            <button class="btn btn-transform" onclick="shrinkShape()">− Shrink</button>
+            <button class="btn btn-danger" onclick="clearGrid()">Clear</button>
+        </div>
+        <div class="buttons">
+            <button class="btn btn-primary" onclick="sendToMac()" style="background:#00BCD4">📤 Send to Mac</button>
+            <button class="btn btn-secondary" onclick="copyJSON()">Copy JSON</button>
+            <button class="btn btn-primary" onclick="downloadPNG()">Download PNG</button>
+        </div>
+
+        <div class="output" id="output">JSON will appear here...</div>
+        <div class="copy-hint">Tap above to select, then copy manually if button fails</div>
+    </div>
+
+    <script>
+        const COLORS = [
+            { hex: 'T', name: 'Clear', css: '#1a1a2e' },
+            { hex: '#2E7D32', name: 'Dk Grn', css: '#2E7D32' },
+            { hex: '#4CAF50', name: 'Green', css: '#4CAF50' },
+            { hex: '#8BC34A', name: 'Lt Grn', css: '#8BC34A' },
+            { hex: '#FFEB3B', name: 'Yellow', css: '#FFEB3B' },
+            { hex: '#FF5722', name: 'Orange', css: '#FF5722' },
+            { hex: '#E91E63', name: 'RedPink', css: '#E91E63' },
+            { hex: '#5D4037', name: 'Brown', css: '#5D4037' },
+            { hex: '#424242', name: 'Dk Gray', css: '#424242' },
+            { hex: '#757575', name: 'Gray', css: '#757575' },
+            { hex: '#212121', name: 'Black', css: '#212121' },
+            { hex: '#FFFFFF', name: 'White', css: '#FFFFFF' },
+        ];
+
+        // Canvas 0 = IDLE, Canvas 1 = ACTIVE
+        const IDLE_DEFAULT = [["T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#212121","#4CAF50","#FF5722","#FF5722","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#FF5722","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","#2E7D32","#2E7D32","#2E7D32","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","#2E7D32","#2E7D32","#2E7D32","#2E7D32","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T"],["T","T","T","T","T","#2E7D32","#2E7D32","#2E7D32","#2E7D32","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T"],["T","T","T","T","#2E7D32","#2E7D32","#2E7D32","#2E7D32","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T"],["T","T","T","#2E7D32","#2E7D32","#2E7D32","#2E7D32","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T"],["T","T","#2E7D32","#2E7D32","#2E7D32","#2E7D32","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","#2E7D32","#2E7D32","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","#FF5722","#FF5722","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"]];
+
+        const ACTIVE_DEFAULT = [["T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#212121","#4CAF50","#FF5722","#FF5722","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#FF5722","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T"],["T","T","#2E7D32","#2E7D32","#2E7D32","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","#2E7D32","#2E7D32","#2E7D32","T","T","T","T"],["T","#2E7D32","#2E7D32","#2E7D32","#2E7D32","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","#2E7D32","#2E7D32","#2E7D32","#2E7D32","T","T","T","T"],["T","#2E7D32","#2E7D32","#2E7D32","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","#2E7D32","#2E7D32","#2E7D32","T","T","T","T"],["T","T","#2E7D32","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","#2E7D32","T","T","T","T","T"],["T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","#4CAF50","#4CAF50","#4CAF50","#4CAF50","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","#2E7D32","#2E7D32","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","#FF5722","#FF5722","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","#5D4037","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"],["T","T","T","T","T","T","T","T","T","T","#5D4037","T","T","T","T","T","T","T","T","T","T","T"]];
+
+        let canvases = [
+            JSON.parse(JSON.stringify(IDLE_DEFAULT)),
+            JSON.parse(JSON.stringify(ACTIVE_DEFAULT))
+        ];
+        let currentCanvas = 0;
+        let pixels = canvases[0];
+        let selectedColor = COLORS[2];
+        let isDrawing = false;
+        let history = [[JSON.parse(JSON.stringify(canvases[0]))], [JSON.parse(JSON.stringify(canvases[1]))]];
+        let historyIndex = [0, 0];
+
+        const INSTRUCTIONS = [
+            `<strong>IDLE:</strong> Bird perched, wings folded down-left<br><span style="color:#FF5722">Beak:</span> Orange pointing right (rows 5-6)<br><span style="color:#757575">Mic:</span> Add gray mic head near beak (cols 14-15)`,
+            `<strong>ACTIVE:</strong> Bird singing, wings spread out!<br><span style="color:#FF5722">Beak:</span> Open/bigger orange beak<br><span style="color:#757575">Mic:</span> Gray mic head near open beak<br><span style="color:#2E7D32">Wings:</span> Spread to both sides`
+        ];
+
+        function switchCanvas(idx) {
+            canvases[currentCanvas] = JSON.parse(JSON.stringify(pixels));
+            currentCanvas = idx;
+            pixels = canvases[currentCanvas];
+            document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+            document.getElementById('instructions').innerHTML = INSTRUCTIONS[idx];
+            renderPixels();
+        }
+
+        // Build palette
+        const palette = document.getElementById('palette');
+        COLORS.forEach((color, i) => {
+            const wrapper = document.createElement('div');
+            wrapper.style.textAlign = 'center';
+            const btn = document.createElement('div');
+            btn.className = 'color-btn' + (color.hex === 'T' ? ' transparent' : '') + (i === 2 ? ' selected' : '');
+            if (color.hex !== 'T') btn.style.background = color.css;
+            btn.onclick = () => selectColor(i);
+            const label = document.createElement('div');
+            label.className = 'color-label';
+            label.textContent = color.name;
+            wrapper.appendChild(btn);
+            wrapper.appendChild(label);
+            palette.appendChild(wrapper);
+        });
+
+        function selectColor(index) {
+            document.querySelectorAll('.color-btn').forEach((b, i) => b.classList.toggle('selected', i === index));
+            selectedColor = COLORS[index];
+        }
+
+        // Build grid
+        const grid = document.getElementById('grid');
+        for (let y = 0; y < 22; y++) {
+            for (let x = 0; x < 22; x++) {
+                const pixel = document.createElement('div');
+                pixel.className = 'pixel';
+                pixel.dataset.x = x;
+                pixel.dataset.y = y;
+                grid.appendChild(pixel);
+            }
+        }
+
+        function paintPixel(e) {
+            const pixel = e.target;
+            if (!pixel.classList.contains('pixel')) return;
+            const x = parseInt(pixel.dataset.x);
+            const y = parseInt(pixel.dataset.y);
+            pixels[y][x] = selectedColor.hex;
+            pixel.style.background = selectedColor.hex === 'T' ? '#1a1a2e' : selectedColor.css;
+            updatePreview();
+            updateOutput();
+        }
+
+        grid.addEventListener('mousedown', (e) => { isDrawing = true; paintPixel(e); });
+        grid.addEventListener('mousemove', (e) => { if (isDrawing) paintPixel(e); });
+        grid.addEventListener('mouseup', () => { if (isDrawing) { isDrawing = false; saveToHistory(); } });
+        grid.addEventListener('mouseleave', () => { if (isDrawing) { isDrawing = false; saveToHistory(); } });
+
+        grid.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; handleTouch(e); });
+        grid.addEventListener('touchmove', (e) => { e.preventDefault(); if (isDrawing) handleTouch(e); });
+        grid.addEventListener('touchend', () => { if (isDrawing) { isDrawing = false; saveToHistory(); } });
+
+        function handleTouch(e) {
+            const touch = e.touches[0];
+            const pixel = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (pixel && pixel.classList.contains('pixel')) paintPixel({ target: pixel });
+        }
+
+        function saveToHistory() {
+            const h = history[currentCanvas];
+            const hi = historyIndex[currentCanvas];
+            history[currentCanvas] = h.slice(0, hi + 1);
+            history[currentCanvas].push(JSON.parse(JSON.stringify(pixels)));
+            historyIndex[currentCanvas] = history[currentCanvas].length - 1;
+            if (history[currentCanvas].length > 50) { history[currentCanvas].shift(); historyIndex[currentCanvas]--; }
+        }
+
+        function undo() {
+            if (historyIndex[currentCanvas] > 0) {
+                historyIndex[currentCanvas]--;
+                pixels = JSON.parse(JSON.stringify(history[currentCanvas][historyIndex[currentCanvas]]));
+                canvases[currentCanvas] = pixels;
+                renderPixels();
+            }
+        }
+
+        function redo() {
+            if (historyIndex[currentCanvas] < history[currentCanvas].length - 1) {
+                historyIndex[currentCanvas]++;
+                pixels = JSON.parse(JSON.stringify(history[currentCanvas][historyIndex[currentCanvas]]));
+                canvases[currentCanvas] = pixels;
+                renderPixels();
+            }
+        }
+
+        function renderPixels() {
+            const pixelElements = document.querySelectorAll('.pixel');
+            for (let y = 0; y < 22; y++) {
+                for (let x = 0; x < 22; x++) {
+                    const color = pixels[y][x];
+                    const pixel = pixelElements[y * 22 + x];
+                    const colorObj = COLORS.find(c => c.hex === color);
+                    pixel.style.background = color === 'T' ? '#1a1a2e' : (colorObj ? colorObj.css : color);
+                }
+            }
+            updatePreview();
+            updateOutput();
+        }
+
+        function growShape() {
+            // Grow shape outward from center (rows 3-16, cols 2-15 in 0-indexed)
+            const newPixels = JSON.parse(JSON.stringify(pixels));
+            for (let y = 3; y <= 16; y++) {
+                for (let x = 2; x <= 15; x++) {
+                    if (pixels[y][x] !== 'T') {
+                        // Expand to neighbors
+                        [[0,-1],[0,1],[-1,0],[1,0]].forEach(([dy,dx]) => {
+                            const ny = y + dy, nx = x + dx;
+                            if (ny >= 0 && ny < 22 && nx >= 0 && nx < 22 && pixels[ny][nx] === 'T') {
+                                newPixels[ny][nx] = pixels[y][x];
+                            }
+                        });
+                    }
+                }
+            }
+            pixels = newPixels;
+            canvases[currentCanvas] = pixels;
+            saveToHistory();
+            renderPixels();
+        }
+
+        function shrinkShape() {
+            // Shrink shape inward (remove edge pixels)
+            const newPixels = JSON.parse(JSON.stringify(pixels));
+            for (let y = 3; y <= 16; y++) {
+                for (let x = 2; x <= 15; x++) {
+                    if (pixels[y][x] !== 'T') {
+                        // Check if on edge (has transparent neighbor)
+                        const hasTransparentNeighbor = [[0,-1],[0,1],[-1,0],[1,0]].some(([dy,dx]) => {
+                            const ny = y + dy, nx = x + dx;
+                            return ny < 0 || ny >= 22 || nx < 0 || nx >= 22 || pixels[ny][nx] === 'T';
+                        });
+                        if (hasTransparentNeighbor) newPixels[y][x] = 'T';
+                    }
+                }
+            }
+            pixels = newPixels;
+            canvases[currentCanvas] = pixels;
+            saveToHistory();
+            renderPixels();
+        }
+
+        function clearGrid() {
+            pixels = Array(22).fill(null).map(() => Array(22).fill('T'));
+            canvases[currentCanvas] = pixels;
+            saveToHistory();
+            renderPixels();
+        }
+
+        function updatePreview() {
+            [22, 44].forEach(size => {
+                const canvas = document.getElementById('preview' + size);
+                const ctx = canvas.getContext('2d');
+                const scale = size / 22;
+                ctx.clearRect(0, 0, size, size);
+                for (let y = 0; y < 22; y++) {
+                    for (let x = 0; x < 22; x++) {
+                        const color = pixels[y][x];
+                        if (color !== 'T') {
+                            ctx.fillStyle = color;
+                            ctx.fillRect(x * scale, y * scale, scale, scale);
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateOutput() {
+            document.getElementById('output').textContent = JSON.stringify(pixels);
+        }
+
+        function copyJSON() {
+            const json = JSON.stringify(pixels);
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(json).then(() => {
+                    alert('Copied!');
+                }).catch(() => {
+                    fallbackCopy(json);
+                });
+            } else {
+                fallbackCopy(json);
+            }
+        }
+
+        function fallbackCopy(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            alert('Copied!');
+        }
+
+        function sendToMac() {
+            const type = currentCanvas === 0 ? 'idle' : 'active';
+            const data = { type: type, pixels: pixels };
+
+            fetch('/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    alert('✓ Sent ' + type.toUpperCase() + ' to Mac!');
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            })
+            .catch(err => {
+                alert('Failed to send: ' + err.message);
+            });
+        }
+
+        function downloadPNG() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 22;
+            canvas.height = 22;
+            const ctx = canvas.getContext('2d');
+            for (let y = 0; y < 22; y++) {
+                for (let x = 0; x < 22; x++) {
+                    const color = pixels[y][x];
+                    if (color !== 'T') {
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x, y, 1, 1);
+                    }
+                }
+            }
+            const link = document.createElement('a');
+            link.download = currentCanvas === 0 ? 'panokeet-idle.png' : 'panokeet-active.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        renderPixels();
+    </script>
+</body>
+</html>
