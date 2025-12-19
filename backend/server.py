@@ -48,29 +48,47 @@ class RecorderState:
 
     def start_recording(self):
         if self.recording:
-            return False
+            return {"success": False, "error": "Already recording"}
 
         self.audio_data = []
-        self.recording = True
         self.temp_audio_path = None
         self.last_transcript = None
-        self.current_level = 0.0  # For live audio level
+        self.current_level = 0.0
 
         def callback(indata, frames, t, status):
             if self.recording:
                 self.audio_data.append(indata.copy())
-                # Calculate RMS level for visualization
                 self.current_level = float(np.sqrt(np.mean(indata**2)))
 
-        self.stream = sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            dtype=np.float32,
-            callback=callback
-        )
-        self.stream.start()
-        print("🔴 Recording started")
-        return True
+        try:
+            # Check for available input devices first
+            devices = sd.query_devices()
+            input_devices = [d for d in devices if d['max_input_channels'] > 0]
+            if not input_devices:
+                print("❌ No audio input devices found")
+                return {"success": False, "error": "No audio input device found. Please connect a microphone."}
+
+            self.stream = sd.InputStream(
+                samplerate=SAMPLE_RATE,
+                channels=1,
+                dtype=np.float32,
+                callback=callback
+            )
+            self.stream.start()
+            self.recording = True
+            print("🔴 Recording started")
+            return {"success": True}
+
+        except sd.PortAudioError as e:
+            error_msg = str(e)
+            if "device" in error_msg.lower():
+                print(f"❌ Audio device error: {e}")
+                return {"success": False, "error": "No audio input device connected. Please connect a microphone."}
+            print(f"❌ PortAudio error: {e}")
+            return {"success": False, "error": f"Audio system error: {e}"}
+        except Exception as e:
+            print(f"❌ Recording error: {e}")
+            return {"success": False, "error": f"Failed to start recording: {e}"}
 
     def stop_recording(self):
         if not self.recording:
@@ -211,7 +229,9 @@ async def toggle_recording():
         return {"status": "transcribed", "action": "stopped", "transcript": transcript, "duration": duration}
     else:
         # Start recording
-        recorder.start_recording()
+        result = recorder.start_recording()
+        if not result.get("success"):
+            return {"status": "error", "action": "failed", "error": result.get("error", "Unknown error")}
         return {"status": "recording", "action": "started"}
 
 
@@ -221,7 +241,9 @@ async def start_recording():
     if recorder.recording:
         return {"status": "already_recording"}
 
-    recorder.start_recording()
+    result = recorder.start_recording()
+    if not result.get("success"):
+        return {"status": "error", "error": result.get("error", "Unknown error")}
     return {"status": "recording"}
 
 
