@@ -8,12 +8,18 @@ echo "🦜 Starting Panokeet..."
 
 # Kill any existing instances first
 echo "Cleaning up old processes..."
+launchctl unload ~/Library/LaunchAgents/com.panokeet.backend.plist 2>/dev/null
 pkill -9 -f "PanokeetUI" 2>/dev/null
-pkill -9 -f "backend/server.py" 2>/dev/null
-for pid in $(lsof -ti:8765 2>/dev/null); do
-    kill -9 "$pid" 2>/dev/null
+pkill -9 -f "server.py" 2>/dev/null
+pkill -9 -f "uvicorn" 2>/dev/null
+
+# Force kill anything on port 8765, retry until clear
+for i in {1..5}; do
+    pid=$(lsof -ti:8765 2>/dev/null)
+    [ -z "$pid" ] && break
+    kill -9 $pid 2>/dev/null
+    sleep 0.5
 done
-sleep 1
 
 # Start Python backend
 echo "Starting backend server..."
@@ -32,15 +38,15 @@ fi
 
 echo "✓ Backend running on http://localhost:8765"
 
-# Start SwiftUI app
-APP_PATH="$SCRIPT_DIR/PanokeetUI/build/Build/Products/Release/PanokeetUI.app"
+# Start SwiftUI app - find in standard Xcode DerivedData location
+APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData/PanokeetUI-*/Build/Products/Release -name "PanokeetUI.app" -type d 2>/dev/null | head -1)
 if [ -d "$APP_PATH" ]; then
     echo "Starting SwiftUI frontend..."
     open "$APP_PATH"
     echo "✓ Panokeet UI started"
 else
     echo ""
-    echo "⚠️  SwiftUI app not found at $APP_PATH"
+    echo "⚠️  SwiftUI app not found in DerivedData"
     echo "   Run: cd PanokeetUI && xcodebuild -scheme PanokeetUI -configuration Release build"
     echo ""
 fi
